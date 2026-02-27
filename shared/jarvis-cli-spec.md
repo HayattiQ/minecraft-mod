@@ -6,6 +6,7 @@ Minecraft Mod（Java/Fabric）から利用する Jarvis のコア機能を、`Py
 本仕様は、以下を固定することを目的とする。
 
 - Mod と CLI のインターフェース（JSON 契約）
+- `action` ベースの実行分岐契約（`execute` / `confirm` / `reject`）
 - エラー時の挙動と返却形式
 - テスト結果の受け取り方法
 - エージェントの作業確認フロー
@@ -33,7 +34,6 @@ Minecraft Mod（Java/Fabric）から利用する Jarvis のコア機能を、`Py
 {
   "version": "1.0",
   "trace_id": "c0a80123-0001",
-  "mode": "awake",
   "input": {
     "type": "text",
     "text": "朝にして"
@@ -43,10 +43,6 @@ Minecraft Mod（Java/Fabric）から利用する Jarvis のコア機能を、`Py
     "is_multiplayer": false,
     "is_op": true,
     "world": "overworld"
-  },
-  "policy": {
-    "execution_mode": "suggest",
-    "permission_preset": "Normal"
   }
 }
 ```
@@ -55,10 +51,8 @@ Minecraft Mod（Java/Fabric）から利用する Jarvis のコア機能を、`Py
 
 - `version`
 - `trace_id`
-- `mode`（`idle` / `awake`）
 - `input.type`（`text` / `audio_ref`）
 - `player_context`
-- `policy`
 
 ### 4.2 Response JSON
 
@@ -68,10 +62,13 @@ Minecraft Mod（Java/Fabric）から利用する Jarvis のコア機能を、`Py
   "trace_id": "c0a80123-0001",
   "ok": true,
   "type": "reply",
-  "message": "朝に変更します。実行しますか？",
+  "message": "了解。朝にします。",
   "intent": "minecraft_command",
   "command": "/time set day",
-  "requires_confirm": true,
+  "action": "execute",
+  "confidence": 0.95,
+  "requires_confirm": false,
+  "reason_code": "NONE",
   "error_code": null,
   "latency_ms": 182
 }
@@ -84,8 +81,17 @@ Minecraft Mod（Java/Fabric）から利用する Jarvis のコア機能を、`Py
 - `ok`
 - `type`（`reply` / `error`）
 - `message`
+- `action`（`execute` / `confirm` / `reject`）
+- `confidence`（`0.0`〜`1.0`）
+- `reason_code`
 - `error_code`（正常時 `null`）
 - `latency_ms`
+
+`action` の意味:
+
+- `execute`: Mod 側で即時実行対象として扱う
+- `confirm`: Mod 側で確認 UI を表示して承認待ちにする
+- `reject`: 実行せず返答表示のみ行う
 
 ### 4.3 エラーコード
 
@@ -156,7 +162,7 @@ Minecraft Mod（Java/Fabric）から利用する Jarvis のコア機能を、`Py
 
 - `test-all` が成功すること
 - `contract` テスト失敗時は実装変更をマージ不可
-- `e2e-cli` の主要シナリオ（正常/上限超過/権限不足/タイムアウト）全通
+- `e2e-cli` の主要シナリオ（`execute` / `confirm` / `reject` / 異常系）全通
 
 ## 7. エージェント作業確認フロー
 
