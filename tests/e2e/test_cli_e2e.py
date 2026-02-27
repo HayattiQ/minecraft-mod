@@ -20,15 +20,14 @@ class TestCliE2E(unittest.TestCase):
             {
                 "version": "1.0",
                 "trace_id": "e2e-1",
-                "mode": "awake",
                 "input": {"type": "text", "text": "朝にして"},
                 "player_context": {"is_multiplayer": False, "is_op": True},
-                "policy": {"execution_mode": "suggest", "permission_preset": "Normal"},
             }
         )
         out = self.run_cli(payload)
         self.assertTrue(out["ok"])
         self.assertEqual(out["command"], "/time set day")
+        self.assertEqual(out["action"], "execute")
 
     def test_invalid_json(self):
         out = self.run_cli("{bad json")

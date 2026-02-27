@@ -50,3 +50,36 @@ dotenvx を使う場合は、次のように実行できます。
 ```bash
 dotenvx run -- tools/sync-datapack.sh
 ```
+
+## Jarvis CLI を音声で実行する
+
+通常利用は `--voice` モードで実行します。起動後に 10 秒間録音し、文字起こし結果を OpenAI に送って返答を表示します。
+
+```bash
+python3 -m jarvis.cli --voice
+```
+
+オプション例:
+
+```bash
+# 録音秒数を変更
+python3 -m jarvis.cli --voice --seconds 6
+
+# ALSA デバイスを指定
+python3 -m jarvis.cli --voice --device plughw:0,0
+```
+
+前提:
+
+- `OPENAI_API_KEY` を環境変数、または `.env.local` に設定
+- Linux で `arecord` が利用可能（`alsa-utils`）
+
+### オンライン音声 E2E を実行する
+
+`tests/fixtures/online/01.wav` から `10.wav` までの音声を OpenAI で文字起こしし、Jarvis の `action` 判定を検証します。
+
+```bash
+RUN_ONLINE_E2E=1 OPENAI_API_KEY=... python3 -m unittest tests.e2e.test_voice_online_e2e -v
+# または
+make test-e2e-online
+```

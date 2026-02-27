@@ -7,17 +7,12 @@ def base_req():
     return {
         "version": "1.0",
         "trace_id": "test-1",
-        "mode": "awake",
         "input": {"type": "text", "text": "朝にして"},
         "player_context": {
             "player_name": "Steve",
             "is_multiplayer": False,
             "is_op": True,
             "world": "overworld",
-        },
-        "policy": {
-            "execution_mode": "suggest",
-            "permission_preset": "Normal",
         },
     }
 
@@ -28,7 +23,8 @@ class TestCore(unittest.TestCase):
         self.assertTrue(res["ok"])
         self.assertEqual(res["intent"], "minecraft_command")
         self.assertEqual(res["command"], "/time set day")
-        self.assertTrue(res["requires_confirm"])
+        self.assertEqual(res["action"], "execute")
+        self.assertFalse(res["requires_confirm"])
 
     def test_limit_exceeded(self):
         req = base_req()
@@ -41,14 +37,15 @@ class TestCore(unittest.TestCase):
         req = base_req()
         req["player_context"]["is_multiplayer"] = True
         req["player_context"]["is_op"] = False
-        req["policy"]["execution_mode"] = "auto"
         res = handle_request(req)
         self.assertFalse(res["ok"])
-        self.assertEqual(res["error_code"], "PERMISSION_DENIED")
+        self.assertEqual(res["intent"], "need_confirmation")
+        self.assertEqual(res["action"], "confirm")
+        self.assertEqual(res["reason_code"], "PERMISSION_RISK")
 
     def test_invalid_request(self):
         req = base_req()
-        del req["policy"]
+        del req["player_context"]
         res = handle_request(req)
         self.assertFalse(res["ok"])
         self.assertEqual(res["error_code"], "INVALID_REQUEST")

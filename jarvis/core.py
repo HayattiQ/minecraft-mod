@@ -9,7 +9,6 @@ from typing import Any, Dict, Tuple
 from jarvis import errors
 
 VERSION = "1.0"
-ALLOWED_MODES = {"idle", "awake"}
 ALLOWED_INPUT_TYPES = {"text", "audio_ref"}
 
 
@@ -22,8 +21,6 @@ def _validate_request(req: Dict[str, Any]) -> Tuple[bool, str | None]:
         return False, "missing version"
     if not _required(req, "trace_id"):
         return False, "missing trace_id"
-    if req.get("mode") not in ALLOWED_MODES:
-        return False, "invalid mode"
 
     input_obj = req.get("input")
     if not isinstance(input_obj, dict):
@@ -41,8 +38,6 @@ def _validate_request(req: Dict[str, Any]) -> Tuple[bool, str | None]:
 
     if not isinstance(req.get("player_context"), dict):
         return False, "missing player_context"
-    if not isinstance(req.get("policy"), dict):
-        return False, "missing policy"
 
     return True, None
 
@@ -56,7 +51,10 @@ def _base_response(trace_id: str) -> Dict[str, Any]:
         "message": "",
         "intent": None,
         "command": None,
+        "action": "reject",
+        "confidence": 0.0,
         "requires_confirm": False,
+        "reason_code": "NONE",
         "error_code": None,
         "latency_ms": 0,
     }
@@ -95,43 +93,91 @@ def handle_request(req: Dict[str, Any]) -> Dict[str, Any]:
             errors.LIMIT_EXCEEDED,
             "上限を超過しているため処理を実行できません。入力値を調整して再実行してください。",
         )
+        res["action"] = "reject"
+        res["reason_code"] = "OUT_OF_SCOPE"
         res["latency_ms"] = int((time.perf_counter() - start) * 1000)
         return res
 
     player = req["player_context"]
-    policy = req["policy"]
 
     is_multiplayer = bool(player.get("is_multiplayer", False))
     is_op = bool(player.get("is_op", False))
-    execution_mode = policy.get("execution_mode", "suggest")
-
-    if is_multiplayer and not is_op and execution_mode == "auto":
-        res = _error_response(trace_id, errors.PERMISSION_DENIED, "権限不足のため自動実行はできません。")
-        res["latency_ms"] = int((time.perf_counter() - start) * 1000)
-        return res
 
     res = _base_response(trace_id)
     input_obj = req.get("input", {})
     input_type = input_obj.get("type")
     text = (input_obj.get("text") or "").strip()
 
-    if req.get("mode") == "idle":
-        res["message"] = "IDLE mode: wake word detector is managed by Mod side."
-        res["intent"] = "idle_status"
-    elif input_type == "audio_ref":
-        res["message"] = f"音声入力を受信しました: {input_obj.get('audio_ref')}"
+    if input_type == "audio_ref":
+        res["message"] = "音声を受け取りました。内容を確認して提案します。"
         res["intent"] = "audio_received"
-    elif "朝" in text or "/time set day" in text:
-        res["message"] = "朝に変更します。"
-        res["intent"] = "minecraft_command"
-        res["command"] = "/time set day"
-        res["requires_confirm"] = execution_mode != "auto"
+        res["action"] = "confirm"
+        res["confidence"] = 0.3
+        res["requires_confirm"] = True
+        res["reason_code"] = "AMBIGUOUS"
+    elif "全部消して" in text or "全部壊して" in text or "destroy all" in text.lower():
+        res["ok"] = False
+        res["intent"] = "need_confirmation"
+        res["message"] = "危ない操作なので、そのままは実行しません。範囲を指定してくれる？"
+        res["command"] = None
+        res["action"] = "confirm"
+        res["confidence"] = 0.4
+        res["requires_confirm"] = True
+        res["reason_code"] = "UNSAFE"
+        res["error_code"] = errors.PERMISSION_DENIED
+    elif (
+        "朝" in text
+        or "/time set day" in text
+        or "デイ" in text
+        or "day" in text.lower()
+    ):
+        if is_multiplayer and not is_op:
+            res["ok"] = False
+            res["intent"] = "need_confirmation"
+            res["message"] = "朝にする命令は了解。実行権限が足りないかも。OP権限を確認して。"
+            res["command"] = None
+            res["action"] = "confirm"
+            res["confidence"] = 0.7
+            res["requires_confirm"] = True
+            res["reason_code"] = "PERMISSION_RISK"
+            res["error_code"] = errors.PERMISSION_DENIED
+        else:
+            res["message"] = "了解。朝にします。"
+            res["intent"] = "minecraft_command"
+            res["command"] = "/time set day"
+            res["action"] = "execute"
+            res["confidence"] = 0.95
+            res["requires_confirm"] = False
+            res["reason_code"] = "NONE"
     elif text:
-        res["message"] = f"受信しました: {text}"
-        res["intent"] = "chat"
+        if "気分" in text:
+            res["message"] = "元気です。あなたはどう？"
+        elif "こんにちは" in text:
+            res["message"] = "こんにちは。今日は何をする？"
+        elif "夜にして" in text or "昼にして" in text:
+            res["message"] = "その時間変更はまだ対応していません。朝ならすぐできます。"
+            res["action"] = "confirm"
+            res["confidence"] = 0.6
+            res["requires_confirm"] = True
+            res["reason_code"] = "OUT_OF_SCOPE"
+            res["intent"] = "need_confirmation"
+            res["ok"] = False
+            res["error_code"] = errors.ENGINE_UNAVAILABLE
+        else:
+            res["message"] = f"「{text}」了解。必要なら実行したい操作を具体的に教えて。"
+        if res["intent"] is None:
+            res["intent"] = "chat"
+        if res["action"] == "reject":
+            res["confidence"] = 0.9
+            res["requires_confirm"] = False
+            res["reason_code"] = "NONE"
     else:
-        res["message"] = "入力が空です。"
+        res["message"] = "音声をうまく認識できませんでした。もう一度、短くはっきり話してください。"
         res["intent"] = "chat"
+        res["action"] = "reject"
+        res["confidence"] = 0.1
+        res["requires_confirm"] = False
+        res["reason_code"] = "AMBIGUOUS"
 
     res["latency_ms"] = int((time.perf_counter() - start) * 1000)
     return res

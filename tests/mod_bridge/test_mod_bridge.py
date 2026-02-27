@@ -9,10 +9,8 @@ class TestModBridgeStyle(unittest.TestCase):
         req = {
             "version": "1.0",
             "trace_id": "bridge-1",
-            "mode": "awake",
             "input": {"type": "text", "text": "hello"},
             "player_context": {"is_multiplayer": False, "is_op": True},
-            "policy": {"execution_mode": "suggest", "permission_preset": "Normal"},
         }
 
         proc = subprocess.Popen(

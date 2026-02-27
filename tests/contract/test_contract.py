@@ -8,10 +8,8 @@ class TestContract(unittest.TestCase):
         self.req = {
             "version": "1.0",
             "trace_id": "contract-1",
-            "mode": "awake",
             "input": {"type": "text", "text": "hello"},
             "player_context": {"is_multiplayer": False, "is_op": True},
-            "policy": {"execution_mode": "suggest", "permission_preset": "Normal"},
         }
 
     def test_response_required_fields(self):
@@ -22,14 +20,17 @@ class TestContract(unittest.TestCase):
             "ok",
             "type",
             "message",
+            "action",
+            "confidence",
+            "reason_code",
             "error_code",
             "latency_ms",
         }
         self.assertTrue(required.issubset(set(res.keys())))
 
-    def test_invalid_mode(self):
+    def test_missing_player_context(self):
         req = dict(self.req)
-        req["mode"] = "bad"
+        del req["player_context"]
         res = handle_request(req)
         self.assertFalse(res["ok"])
         self.assertEqual(res["error_code"], "INVALID_REQUEST")
